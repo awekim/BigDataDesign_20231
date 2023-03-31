@@ -93,9 +93,7 @@ library(tidyr)
 | 22202022 | Lee | 18 |
 | 22202023 | Han | 22 |
 
-#### https://www.tablesgenerator.com/markdown_tables
-
-![alt text](files/markdown_table.png)
+#### [table generator](https://www.tablesgenerator.com/)
 
 
 ----------------------------------------
