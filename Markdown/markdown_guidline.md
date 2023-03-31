@@ -104,10 +104,10 @@ library(tidyr)
 
 ### Ex) Sigmoid function
 $$
-y_k = \frac{e^{a_k}}{\sum_{i=1}^{n}e^{a_i}}
+y_k = \frac{1}{1+e^{-x}}
 $$
 
-$y_k = \frac{e^{a_k}}{\sum_{i=1}^{n}e^{a_i}}$
+$y_k = \frac{1}{1+e^{-x}}$
 
 
 ### Ex) Square root
