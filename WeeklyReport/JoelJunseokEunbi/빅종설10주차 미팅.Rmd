@@ -1,0 +1,378 @@
+---
+title: "Big Data Capstone Design Team Project EDA"
+author: "Joel Shin"
+date: "2023-05-04"
+output: html_document
+---
+
+## EDA 세팅 및 데이터 로드
+```{r, message=F, warning=F}
+set.seed(2020)
+library(readxl)
+library(tidyr)
+library(MLmetrics)
+library(purrr)
+library(tidyverse)
+library(plotly)
+library(caret)
+library(reshape2)
+library(randomForest)
+library(rpart)
+library(ROCR)
+library(C50)
+library(xgboost)
+library(readr)
+library(foreign)
+
+options(scipen = 1000)
+setwd("C:/contest")
+
+people <- read_excel("people.xlsx")
+reservoir <- read_excel("reservoir.xlsx")
+factory <- read_csv("factory.csv")
+crops_rice <- read.dbf("crops_rice.dbf")
+Sinnyeong_myeon_rain <- read_csv("weather/신녕면_1시간강수량_20220101_20221231.csv")
+Chungtungmyeon_rain <- read_csv("weather/청통면_1시간강수량_20220101_20221231.csv")
+Hwasanmyeon_rain <- read_csv("weather/화산면_1시간강수량_20220101_20221231.csv")
+Sinnyeong_myeon_snow <- read_csv("weather/신녕면_1시간적설_20220101_20221231.csv")
+Chungtungmyeon_snow <- read_csv("weather/청통면_1시간적설_20220101_20221231.csv")
+Hwasanmyeon_snow <- read_csv("weather/화산면_1시간적설_20220101_20221231.csv")
+Sinnyeong_myeon_humidity <- read_csv("weather/신녕면_습도_20220101_20221231.csv")
+Chungtungmyeon_humidity <- read_csv("weather/청통면_습도_20220101_20221231.csv")
+Hwasanmyeon_humidity <- read_csv("weather/화산면_습도_20220101_20221231.csv")
+```
+
+\
+
+5월 4일 10주차 기준, 영천시 내 가뭄관련 데이터는 총 5개가 수집이 되었으며 세부 내용은 아래와 같음
+
+- 인구 데이터 : 면읍동 기준 데이터 수집, 아쉽게도 리 단위까지의 인구 데이터는 수집하지 못함
+- 저수지 데이터 : 영천시 내 존재하는 저수지 정보 확보, 저수량, 위치 등에 대한 정보 내포
+- 농경 재배 데이터 : 영천시 논, 휴경지, 작물, 과수 재배 정보 확보, 현 EDA에서는 논 재배 정보를 활용하여 진행
+- 공장 데이터 : 영천시 공장 위치 정보 데이터 확보
+- 기상 데이터 : 2022년도 영천시 강우 관련 데이터 확보
+
+추가 확보 예정 데이터
+- 영천시 학교 정보 데이터 
+- 영천시 체육 시설 및 공원 위치 정보 데이터
++ 그 밖에 물 활용이 많은 공공데이터 수집 시도 예정
+
+\
+
+
+## 영천시 인구 분석
+```{r, message=F, warning=F}
+# 데이터 오버뷰
+head(people)
+
+# 영화지구에 해당되는 지역들 추출 및 NA 변수 제거
+object_people <- people[c(6:8),-2]
+names(object_people) <- c("지역", "총인구수", "남인구수", "여인구수", "남녀구성비", "남구성비", "여구성비", "성비", "세대수", "세대당인구수")
+
+# 필터링 이후 데이터 오버뷰
+head(object_people)
+
+# 적용 방안
+# 다른 데이터와 병합을 진행할 때, 지역별로 총인구수, 남인구수, 여인구수, 성비, 세대수, 서대당인구수 변수를 활용하여 병합
+object_people %>% select(지역, 총인구수, 남인구수, 여인구수, 성비, 세대수, 세대당인구수) -> object_people
+convert_to_numeric <- function(x) {
+  x <- gsub(",", "", x)
+  return(as.numeric(x))
+}
+
+# 열 데이터 타입 전처리
+str(object_people)
+object_people$지역 -> region
+object_people %>% select(-지역) %>% mutate_all(convert_to_numeric) -> object_people
+object_people$지역 <- region
+rm(region, convert_to_numeric)
+object_people %>% select(지역, 총인구수, 남인구수, 여인구수, 성비, 세대수, 세대당인구수) -> object_people
+```
+
+```{r, message=F, warning=F}
+# 영화지구 면,읍별 인구수 시각화화
+pastel_colors <- c("#FFD6A5", "#FFCAD4", "#C3F6C8")
+object_people %>%
+  ggplot(aes(x = 지역, y = 총인구수, fill = 지역)) +
+  geom_col(width = 0.5, color = "black", size = 1) +
+  scale_fill_manual(values = pastel_colors) +
+  theme_bw() +
+  ylab("명") +
+  xlab(NULL) +
+  ggtitle("영천시 영화지구 면,읍별 인구수") + 
+  theme(plot.title = element_text(size = 17, face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text = element_text(size = 14, face = "bold")) +
+  geom_text(aes(label = paste0(총인구수)), vjust = -0.5, size = 6) +
+  scale_y_continuous(limits = c(0, 12000))
+```
+
+\
+
+금호면의 인구가 신녕면 및 청통면의 인구보다 높게 나타남
+
+\
+
+```{r, message=F, warning=F}
+# 영화지구 면,읍별 남녀인구수 시각화화
+pastel_colors <- c("#A8E6CF", "#FFD6A5", "#D0F0C0")
+object_people %>% 
+  gather(남인구수, 여인구수, key = "key", value = "value") %>% 
+  mutate(성별 = key) %>% 
+  ggplot(aes(지역,value, fill = 성별)) +
+  geom_col(position = "dodge", width = 0.6, color = "black", size = 0.5) +
+  scale_fill_manual(values = pastel_colors) +
+  theme_bw() +
+  ylab("명") +
+  xlab(NULL) +
+  ggtitle("영천시 영화지구 면,읍별 남녀 인구수") +
+  theme(plot.title = element_text(size = 17, face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text = element_text(size = 14, face = "bold")) +
+  geom_text(aes(label = value, group = 성별),
+            position = position_dodge(width = 0.6), vjust = -0.5, size = 4.5) +
+  scale_y_continuous(limits = c(0, 7000))
+```
+
+\
+
+인구 성비의 경우 금호읍과 청통면은 남성의 인구 비율이 높게 나타나며, 신녕면의 남성 인구 비율이 낮게 나타나는 것을 확인
+
+\
+
+```{r, message=F, warning=F}
+# 영화지구 인구 정보
+object_people
+
+non_object_people <- people[c(5,9:21),-2]
+names(non_object_people) <- c("지역", "총인구수", "남인구수", "여인구수", "남녀구성비", "남구성비", "여구성비", "성비", "세대수", "세대당인구수")
+# 열 데이터 타입 전처리
+non_object_people %>% select(지역, 총인구수, 남인구수, 여인구수, 성비, 세대수, 세대당인구수) -> non_object_people
+convert_to_numeric <- function(x) {
+  x <- gsub(",", "", x)
+  return(as.numeric(x))
+}
+str(non_object_people)
+non_object_people$지역 -> region
+non_object_people %>% select(-지역) %>% mutate_all(convert_to_numeric) -> non_object_people
+non_object_people$지역 <- region
+rm(region, convert_to_numeric)
+non_object_people %>% select(지역, 총인구수, 남인구수, 여인구수, 성비, 세대수, 세대당인구수) -> non_object_people
+
+non_object_people %>% summarise(type = "non_object", 평균인구수 = mean(총인구수), 평균성비 = mean(성비),
+                            평균세대수 = mean(세대수), 평균세대당인구수 = mean(세대당인구수)) -> summary_non_object_people
+object_people %>% summarise(type = "object",평균인구수 = mean(총인구수), 평균성비 = mean(성비),
+                                평균세대수 = mean(세대수), 평균세대당인구수 = mean(세대당인구수)) -> summary_object_people
+rbind(summary_non_object_people, summary_object_people)
+
+
+```
+
+\
+
+단순 인구 정보많으로 식별되는 인사이트는 없었으나, 농경지 비율에 따라 성비의 차이가 존재할 수도 있을 것이라 여겨짐. 통상적인 도메인으로 인구수는 물 사용량에 비례할 수 있다는 것을 식별. 인구 관련 도메인 정보를 확보하기 위해 추가적인 도메인 리서치가 요구됨.
+
+\
+
+
+## 영천시 저수지 분석
+```{r, message=F, warning=F}
+head(reservoir)
+reservoir <- reservoir[-1,]
+names(reservoir) <- c("저수지명", "한발빈도", "유역면적_ha", "유효저수량_km3", "댐형식",
+                      "관개면적_ha", "순관개면적", "관배수면적", "구역외급수면적", "소재지")
+
+# NA 변수 제거
+reservoir <- reservoir[,-c(8,9)]
+
+# NA 변수 제거
+reservoir$유역면적_ha <- as.numeric(reservoir$유역면적_ha)
+reservoir$유효저수량_km3 <- as.numeric(reservoir$유효저수량_km3)
+reservoir$관개면적_ha <- as.numeric(reservoir$관개면적_ha)
+reservoir$순관개면적 <- as.numeric(reservoir$순관개면적)
+reservoir$댐형식 <- as.factor(reservoir$댐형식)
+
+# 영화지구 이외에 해당되는 지역 필터링
+reservoir %>% filter(str_detect(소재지,"가천리") == FALSE &  
+                       str_detect(소재지,"화성리") == FALSE &
+                       str_detect(소재지,"신덕리") == FALSE &  
+                       str_detect(소재지,"대안리") == FALSE & 
+                       str_detect(소재지,"용평리") == FALSE &
+                       str_detect(소재지,"덕암리") == FALSE &
+                       str_detect(소재지,"용천리") == FALSE) -> non_object_reservoir
+
+# 영화지구에 해당되는 지역 필터링
+reservoir %>% filter(str_detect(소재지,"가천리") == TRUE |  
+                       str_detect(소재지,"화성리") == TRUE |
+                       str_detect(소재지,"신덕리") == TRUE |  
+                       str_detect(소재지,"대안리") == TRUE | 
+                       str_detect(소재지,"용평리") == TRUE |
+                       str_detect(소재지,"덕암리") == TRUE |
+                       str_detect(소재지,"용천리") == TRUE) -> object_reservoir
+
+# 지역명 내용 추가(추후 병합에 활용)
+object_reservoir$지역 <- if_else(str_detect(object_reservoir$소재지, "신녕면") == TRUE, "신녕면",
+                        if_else(str_detect(object_reservoir$소재지, "화산면") == TRUE, "화산면", "청통면"))
+
+non_object_reservoir %>% 
+  summarise(type = "non_object", 한발빈도 = mean(한발빈도, na.rm = TRUE), 유역면적_ha = mean(유역면적_ha, na.rm = TRUE),
+            유효저수량_km3 = mean(유효저수량_km3, na.rm = TRUE), 관개면적_ha = mean(관개면적_ha, na.rm = TRUE),
+            순관개면적 = mean(순관개면적, na.rm = TRUE)) -> summary_non_object_reservoir
+object_reservoir %>% 
+  summarise(type = "object", 한발빈도 = mean(한발빈도, na.rm = TRUE), 유역면적_ha = mean(유역면적_ha, na.rm = TRUE),
+            유효저수량_km3 = mean(유효저수량_km3, na.rm = TRUE), 관개면적_ha = mean(관개면적_ha, na.rm = TRUE),
+            순관개면적 = mean(순관개면적, na.rm = TRUE)) -> summary_object_reservoir
+
+rbind(summary_non_object_reservoir, summary_object_reservoir) -> compare_dam
+
+compare_dam
+```
+
+```{r, message=F, warning=F}
+# 영화지구의 저수지들이 다른 영천시 내 저수지들보다 유효저수량이 상대적으로 부족
+pastel_colors <- c("#FFD6A5", "#FFCAD4")
+compare_dam %>% 
+  ggplot(aes(type, 유효저수량_km3, fill = type)) +
+  scale_fill_manual(values = pastel_colors) +
+  geom_col(width = 0.5, color = "black", size = 1) +
+  theme_bw() +
+  ylab("유효저수량km3") +
+  xlab(NULL) +
+  ggtitle("영천시 및 영화지구 유효저수량 비교") + 
+  theme(plot.title = element_text(size = 17, face = "bold", hjust = 0.5),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text = element_text(size = 14, face = "bold")) +
+  geom_text(aes(label = paste0(round(유효저수량_km3,2))), vjust = -0.5, size = 6) +
+  scale_y_continuous(limits = c(0, 40)) 
+```
+
+\
+
+영화지구를 제외한 영천시와 영화지구의 저수지 평균 수치를 비교해본 결과, 유효저수량은 적은것에 비해 관개면적량이 보다 높은 것을 확인함으로써, 영화지구는 주변 인프라 및 환경 대비 많은 물을 사용중임을 확인 
+
+\
+
+한발 : 공사에서는 “한발빈도”라는 말을 사용하고 있는데 예를 들어 어떤 저수지의 설계 시 적용된 한발 빈도가 10년이라면 10년에한 번 올 정도의 가뭄이 발생하더라도 주변 지역에 물을 충분히 공급할 수 있을 정도로 저수지를 설계했다는 뜻
+
+순관개면적 : 순관개면적은 토지의 총 면적에서 길, 건물, 물이나 계곡 등 농작물을 재배할 수 없는 부분을 제외한 부분. 이 면적은농작물의 생산량을 추정하거나 농업 계획을 세울 때 중요한  지표로 사용됨
+
+\
+
+
+## 영천시 농경 재배 지역 분석(논 중심으로 진행)
+```{r, message=F, warning=F}
+head(crops_rice)
+
+str(crops_rice)
+
+crops_rice$지역 <- if_else(str_detect(crops_rice$emd_name, "신녕면") == TRUE, "신녕면",
+                               if_else(str_detect(crops_rice$emd_name, "화산면") == TRUE, "화산면", 
+                                       if_else(str_detect(crops_rice$emd_name, "청통면") == TRUE,"청통면", "영화지구이외지역")))
+table(crops_rice$지역)
+
+crops_rice %>% filter(지역 == "영화지구이외지역") -> non_object_crops_rice
+crops_rice %>% filter(지역 != "영화지구이외지역") -> object_crops_rice
+
+# 평균 면적은 영화지구가 더 적으나
+mean(non_object_crops_rice$area)
+sum(non_object_crops_rice$area)
+
+# 전체 면적은 압도적으로 차이가 남
+mean(object_crops_rice$area)
+sum(object_crops_rice$area)
+
+# 순수 저수지 & 댐 개수 논 대비 면적은 어케 될까?
+sum(non_object_crops_rice$area)/nrow(non_object_reservoir)
+sum(object_crops_rice$area)/nrow(object_reservoir)
+
+# 유효저수지량 대비 논 재배 면적은 어케 될까?
+sum(non_object_crops_rice$area)/sum(non_object_people$총인구수)
+sum(object_crops_rice$area)/sum(object_people$총인구수)
+```
+
+\
+
+영화지구가 영천시에 비해 저수지 개수 대비 벼 재배 면적이 더 넓음은 것을 확인. 이를 통해 인프라가 부족한 것이 일부 확인. 그러나 해당 EDA는 논 재배 데이터만 활용하여 도출된 것이기에, 다른 과수, 휴경지 등의 농업 정보도 활용해야 할 필요가 있음.
+
+\
+
+## 영천시 공장 지역 분석
+```{r, message=F, warning=F}
+head(factory)
+names(factory) <- c("순번","단지명","회사명","대표자명","공장대표주소_도로명","공장대표주소_지번", 
+                    "대표업종번호","업종명","전화번호","생산품","용지면적","건축면적" )
+
+factory$지역 <- if_else(str_detect(factory$공장대표주소_지번, "신녕면") == TRUE, "신녕면",
+                         if_else(str_detect(factory$공장대표주소_지번, "화산면") == TRUE, "화산면", 
+                                 if_else(str_detect(factory$공장대표주소_지번, "청통면") == TRUE,"청통면", "영화지구이외지역")))
+table(factory$지역)
+
+factory %>% filter(지역 == "영화지구이외지역") -> non_object_factory
+factory %>% filter(지역 != "영화지구이외지역") -> object_factory
+
+# 공장 수 대비 인구수는 어떻게 될까?
+sum(non_object_people$총인구수)/nrow(non_object_factory)
+sum(object_people$총인구수)/nrow(object_factory)
+```
+
+\
+
+영화지구 지역 이외의 영천시의 공장 수 및 공장 수 대비 인구수가 더 높게 나타나는 것을 확인. 당연한 도메인 반경 내 정보. 궁극적으로 물 소비와 관련되는 학교, 공공시설 등 인프라 위치 정보 확보를 통해 현재 논리를 일반화하거나, 다른 인사이트를 도출해낼 필요가 있음.
+
+\
+
+## 영천시 날씨 지역 분석
+```{r, message=F, warning=F, eval=F}
+Sinnyeong_myeon_rain <- na.omit(Sinnyeong_myeon_rain)
+Chungtungmyeon_rain <- na.omit(Chungtungmyeon_rain)
+Hwasanmyeon_rain <- na.omit(Hwasanmyeon_rain)
+Sinnyeong_myeon_snow <- na.omit(Sinnyeong_myeon_snow)
+Chungtungmyeon_snow <- na.omit(Chungtungmyeon_snow)
+Hwasanmyeon_snow <- na.omit(Hwasanmyeon_snow)
+Sinnyeong_myeon_humidity <- na.omit(Sinnyeong_myeon_humidity)
+Chungtungmyeon_humidity <- na.omit(Chungtungmyeon_humidity)
+Hwasanmyeon_humidity <- na.omit(Hwasanmyeon_humidity)
+
+names(Sinnyeong_myeon_rain) <- c("day","hour","forecast","value")
+names(Chungtungmyeon_rain) <- c("day","hour","forecast","value")
+names(Hwasanmyeon_rain) <- c("day","hour","forecast","value")
+names(Sinnyeong_myeon_snow) <- c("day","hour","forecast","value")
+names(Chungtungmyeon_snow) <- c("day","hour","forecast","value")
+names(Hwasanmyeon_snow) <- c("day","hour","forecast","value")
+names(Sinnyeong_myeon_humidity) <- c("day","hour","forecast","value")
+names(Chungtungmyeon_humidity) <- c("day","hour","forecast","value")
+names(Hwasanmyeon_humidity) <- c("day","hour","forecast","value")
+
+
+data_setting<- function(df){
+  df$date <- NA
+  datelist <- 1
+  for (i in 1:nrow(df)) {
+    df[i,5] <- datelist
+    if(df[i,1] != df[i+1,1]){
+      datelist = datelist+1
+    }
+    print(df[i,])
+  }
+  return(output_df)
+}
+
+Sinnyeong_myeon_rain <- data_setting(Sinnyeong_myeon_rain)
+Chungtungmyeon_rain <- data_setting(Chungtungmyeon_rain)
+Hwasanmyeon_rain <- data_setting(Hwasanmyeon_rain)
+Sinnyeong_myeon_snow <- data_setting(Sinnyeong_myeon_snow)
+Chungtungmyeon_snow <- data_setting(Chungtungmyeon_snow)
+Hwasanmyeon_snow <- data_setting(Hwasanmyeon_snow)
+Sinnyeong_myeon_humidity <- data_setting(Sinnyeong_myeon_humidity)
+Chungtungmyeon_humidity <- data_setting(Chungtungmyeon_humidity)
+Hwasanmyeon_humidity <- data_setting(Hwasanmyeon_humidity)
+```
+
+
+\
+
+날씨 데이터의 경우 일별 데이터 손상 이슈로 인해 현재 일별 변수 수정 작업 진행 중. 5월 5일 자정 이내로 해당 작업 완료하여 영천시 1년 날씨 정보에 대해 분석 예정
+
+
+\
+
