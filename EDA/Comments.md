@@ -1,0 +1,11 @@
+### JunseokSeo
+- I think the visualization went well. Using color, it made it easy to understand by distinguishing between various variables. It was difficult to predict in a place with high volatility as a predictive model, but I think we will create a meaningful model that can identify the flow of crime.
+- Nice work, but few weakness in logical flow
+- Requirements and format are fulfilled. Writing is clean. High technique analysis, buit I didn't understand why LSTM was applied.  I wish there was a bit more explanation of LSTM.
+- It was interesting to predict the number of crimes with LSM in suggestion.
+- It would have been better that the graphs with labels are visualized well. The project starts with offesne type distribution, among the numerous variables, it would have been better to include in the summary why the variable is used. Other than this overall, the flow was in a good format.
+- I liked how each graph had compact information and held more information other than just the count. I also liked that how LSTM model is performed at the end. It would have been better if the EDA stated results from the LSTM predictions (more explanation)
+- I thought it was a high level of visualization to output each of the 9 crime types in time series data clustering. It was amazing that the final presentation was a time-series forecasting model, and I think it is a great advantage to create results using actual data. It was good to release it with the flow of time.
+- Dividing part 1,2 of offense type depending on severity of crime was the most outstanding part of this report. And overall flow building onto this was logical. Finally providing solution using prediction was novel.
+- It has more figures than the allowed number. It followed the format properly b but I felt some parts needed more explanations. Overall, I understand the EDA but I feel some images needed more explanation.
+- How did you divide the train and validation set ratios in the LSTM model?
